@@ -2,72 +2,220 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Browser Ren'Py Zip Loader</title>
-    <!-- We load JSZip to parse the zip folder completely inside the client browser -->
     <script src="https://cloudflare.com"></script>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        #drop-zone { border: 3px dashed #444; border-radius: 20px; width: 400px; padding: 50px; text-align: center; cursor: pointer; transition: 0.3s; }
-        #drop-zone:hover { border-color: #007bff; background: #1a1a1a; }
-        #game-container { display: none; width: 100%; height: 100vh; position: absolute; top: 0; left: 0; background: black; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: url('https://unsplash.com') no-repeat center center fixed; 
+            background-size: cover;
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .main-layout {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            z-index: 10;
+        }
+
+        .side-gif {
+            width: 150px;
+            height: auto;
+            object-fit: contain;
+            filter: drop-shadow(0px 8px 16px rgba(0, 0, 0, 0.4));
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .glass-box {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 40px;
+            width: 420px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            transition: all 0.4s ease;
+        }
+
+        #drop-zone { 
+            border: 2px dashed rgba(255, 255, 255, 0.4); 
+            border-radius: 12px; 
+            width: 100%; 
+            padding: 30px 0; 
+            cursor: pointer; 
+            transition: background 0.3s, border-color 0.3s;
+        }
+        #drop-zone:hover { 
+            border-color: #007bff; 
+            background: rgba(255, 255, 255, 0.05); 
+        }
+
+        h3, p { margin: 5px 0; color: white; }
+        p { font-size: 0.9em; opacity: 0.8; }
+
+        #loading-container { 
+            display: none; 
+            width: 100%;
+        }
+
+        #loading-text { 
+            font-size: 1.1em; 
+            margin-bottom: 12px; 
+            font-weight: 500;
+            color: white;
+        }
+
+
+        .progress-bar-wrapper {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            width: 100%;
+            height: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #00d2ff);
+            border-radius: 10px;
+            transition: width 0.1s linear;
+        }
+
+        #game-container { 
+            display: none; 
+            width: 100%; 
+            height: 100vh; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            background: black; 
+            z-index: 9999;
+        }
         iframe { width: 100%; height: 100%; border: none; }
-        #loading { display: none; font-size: 1.2em; color: #007bff; }
     </style>
 </head>
 <body>
 
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>Drag & Drop your Ren'Py Web ZIP here</h3>
-        <p>or click to browse your files</p>
-        <input type="file" id="file-input" accept=".zip" style="display:none">
+    <div class="main-layout" id="interactive-ui">
+        
+        <img src="https://tenor.com" alt="Dancing Cow" class="side-gif">
+
+        <div class="glass-box" id="ui-box">
+            <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+                <h3>Drag & Drop Ren'Py ZIP</h3>
+                <p>or click to browse your files</p>
+                <input type="file" id="file-input" accept=".zip" style="display:none">
+            </div>
+            
+            <div id="loading-container">
+                <div id="loading-text">Preparing extraction engine...</div>
+                <div class="progress-bar-wrapper">
+                    <div id="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <img src="https://tenor.com" alt="Dancing Cow" class="side-gif">
+
     </div>
     
-    <div id="loading">Unzipping and assembling game assets in memory...</div>
     <div id="game-container"><iframe id="game-frame"></iframe></div>
 
     <script>
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
-        const loading = document.getElementById('loading');
+        const interactiveUi = document.getElementById('interactive-ui');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingText = document.getElementById('loading-text');
+        const progressBar = document.getElementById('progress-bar');
         const container = document.getElementById('game-container');
         const frame = document.getElementById('game-frame');
 
-        fileInput.addEventListener('change', (e) => handleZip(e.target.files[0]));
+        fileInput.addEventListener('change', (e) => handleZip(e.target.files));
 
-        async function handleZip(file) {
-            if (!file) return;
-            dropZone.style.display = 'none';
-            loading.style.display = 'block';
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length > 0) {
+                handleZip(e.dataTransfer.files);
+            }
+        });
 
-            const zip = await JSZip.loadAsync(file);
-            const files = {};
-            
-            // Extract files into Object URLs so the browser can execute them locally
-            for (const [filename, zipEntry] of Object.entries(zip.files)) {
-                if (zipEntry.dir) continue;
-                const blob = await zipEntry.async("blob");
-                
-                // Set the proper MIME Type for the extracted WebAssembly binary
-                let type = "application/octet-stream";
-                if (filename.endsWith(".html")) type = "text/html";
-                if (filename.endsWith(".js")) type = "application/javascript";
-                if (filename.endsWith(".wasm")) type = "application/wasm";
-                
-                const typedBlob = new Blob([blob], { type: type });
-                files[filename] = URL.createObjectURL(typedBlob);
+        async function handleZip(fileList) {
+            const file = fileList[0];
+            if (!file || !file.name.endsWith('.zip')) {
+                alert("Please drop a valid .zip file.");
+                return;
             }
 
-            // Look for the main index file in the root or nested directory
-            const mainHtmlKey = Object.keys(files).find(k => k.endsWith('index.html'));
-            
-            if (mainHtmlKey) {
-                loading.style.display = 'none';
-                container.style.display = 'block';
+            dropZone.style.display = 'none';
+            loadingContainer.style.display = 'block';
+            loadingText.innerText = "Reading compressed archive...";
+            progressBar.style.width = "5%";
+
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const files = {};
+                const allEntries = Object.entries(zip.files).filter(([_, entry]) => !entry.dir);
+                const totalFiles = allEntries.length;
                 
-                // Inject the generated memory context directly into the iframe
-                frame.src = files[mainHtmlKey];
-            } else {
-                alert("Invalid Zip. Please make sure you are dropping a compiled Ren'Py WEB build!");
+                let processedFiles = 0;
+
+                for (const [filename, zipEntry] of allEntries) {
+                    loadingText.innerText = `Extracting: ${filename.split('/').pop()}`;
+                    
+                    const blob = await zipEntry.async("blob");
+                    
+                    let type = "application/octet-stream";
+                    if (filename.endsWith(".html")) type = "text/html";
+                    if (filename.endsWith(".js")) type = "application/javascript";
+                    if (filename.endsWith(".wasm")) type = "application/wasm";
+                    
+                    const typedBlob = new Blob([blob], { type: type });
+                    files[filename] = URL.createObjectURL(typedBlob);
+                    
+                    processedFiles++;
+                    let progressPercent = 5 + Math.floor((processedFiles / totalFiles) * 90);
+                    progressBar.style.width = `${progressPercent}%`;
+                }
+
+                loadingText.innerText = "Assembling dynamic runtime objects";
+                progressBar.style.width = "98%";
+
+                const mainHtmlKey = Object.keys(files).find(k => k.endsWith('index.html'));
+                
+                if (mainHtmlKey) {
+                    setTimeout(() => {
+                        progressBar.style.width = "100%";
+                        interactiveUi.style.display = 'none';
+                        container.style.display = 'block';
+                        frame.src = files[mainHtmlKey];
+                    }, 400);
+                } else {
+                    throw new Error("Missing entrypoint template target.");
+                }
+
+            } catch (err) {
+                alert("Error: Make sure you are dropping a precompiled Ren'Py HTML5/Web application build directory.");
                 location.reload();
             }
         }
