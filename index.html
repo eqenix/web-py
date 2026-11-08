@@ -53,7 +53,7 @@
     </div>
     
     <div id="game-container"><canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas></div>
-        <script>
+    <script>
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
         const interactiveUi = document.getElementById('interactive-ui');
@@ -73,8 +73,7 @@
         });
 
         async function handleDesktopZip(fileList) {
-            // FIX: Pull the first actual file object out of the FileList wrapper list container
-            const file = (fileList instanceof FileList || Array.isArray(fileList) || fileList.toString() === "[object FileList]") ? fileList[0] : fileList;
+            const file = (fileList instanceof FileList || fileList.toString() === "[object FileList]") ? fileList[0] : fileList[0];
             if (!file || !file.name || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -98,7 +97,6 @@
                 progressBar.style.width = "20%";
 
                 window.virtualFileSystemMap = {};
-                // Extract every loose file from the ZIP package
                 const targetEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir);
                 const totalFiles = targetEntries.length;
                 
@@ -131,7 +129,6 @@
                     preRun: [function() {
                         console.log("Injecting assets directly into root layer to fix //main.py check...");
                         
-                        // Helper function to build directories directly from the root /
                         function createRootPath(path) {
                             let parts = path.split('/');
                             let current = '';
@@ -145,7 +142,6 @@
                         }
 
                         try {
-                            // 1. Fake the required game.zip format binary sequence to pass verification checks
                             const validEmptyZipBytes = new Uint8Array([
                                 0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 
                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -153,16 +149,26 @@
                             ]);
                             Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
 
-                            // 2. Write EVERY file directly to the root environment folder (e.g., /main.py, /game/script.rpyc)
+                            // Write files to the primary virtual environment root directory
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
                                 createRootPath(vPath);
                                 try {
-                                    // This places main.py exactly at /main.py so that '//main.py' successfully opens
                                     Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
+                                } catch(e) {}
+                            }
+
+                            // FIX: Create an explicit literal fallback file element matching the '//main.py' call array check
+                            if (window.virtualFileSystemMap['main.py']) {
+                                try {
+                                    // Forces Emscripten file mount map arrays to hook into double-slash lookups
+                                    Module.FS.createDataFile('//', 'main.py', window.virtualFileSystemMap['main.py'], true, true, true);
+                                    console.log("Forced double-slash file pointer intercept active.");
                                 } catch(e) {
-                                    console.warn("Skipping file write conflict: ", vPath);
+                                    // Fallback to direct file allocation injection
+                                    try { Module.FS.createDataFile('', 'main.py', window.virtualFileSystemMap['main.py'], true, true, true); } catch(err2){}
                                 }
                             }
+                            
                             console.log("Root filesystem virtualization finished!");
                         } catch(vfsErr) {
                             console.error("VFS injection failed: ", vfsErr);
