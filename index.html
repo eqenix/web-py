@@ -73,8 +73,9 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList;
-            if (!file || !file.name.endsWith('.zip')) {
+            // FIX: Pull the first actual file object out of the FileList wrapper list container
+            const file = (fileList instanceof FileList || Array.isArray(fileList) || fileList.toString() === "[object FileList]") ? fileList[0] : fileList;
+            if (!file || !file.name || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
             }
