@@ -100,7 +100,6 @@
                 loadingText.innerText = "Extracting game file arrays...";
                 progressBar.style.width = "20%";
 
-                // FIXED: Changed variable string definition to safe standard syntax
                 window.virtualFileSystemMap = {};
                 const targetEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir && filename.startsWith(prefix + "game/"));
                 const totalFiles = targetEntries.length;
@@ -126,7 +125,7 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["/game"], 
+                    arguments: ["./game"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -136,24 +135,31 @@
                     preRun: [function() {
                         console.log("Initializing dynamic virtual folder injection layout...");
                         
-                        function createVfsPath(path) {
+                        function createVfsPath(baseDir, path) {
                             let parts = path.split('/');
-                            let current = '';
+                            let current = baseDir;
                             for (let i = 0; i < parts.length - 1; i++) {
                                 if (!parts[i]) continue;
                                 current += '/' + parts[i];
                                 try {
                                     Module.FS.mkdir(current);
                                 } catch (e) {
-                                    // Path segment existing hook bypass
+                                    // Directory layer bypass catch
                                 }
                             }
                         }
 
                         try {
+                            // FIX: Force create the standard execution root folders inside the engine sandbox
+                            try { Module.FS.mkdir('/home'); } catch(e){}
+                            try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
+                            try { Module.FS.mkdir('/home/pyodide/game'); } catch(e){}
+
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
-                                createVfsPath(vPath);
-                                Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
+                                // Maps directly to '/home/pyodide/game/...'
+                                const targetPath = '/home/pyodide/' + vPath;
+                                createVfsPath('/home/pyodide', vPath);
+                                Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
                             }
                             console.log("Direct virtual filesystem injection loop finished successfully!");
                         } catch(vfsErr) {
