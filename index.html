@@ -118,11 +118,37 @@
                 window.windowHeight = window.innerHeight;
                 window.windowWidth = window.innerWidth;
                 
-                window.Module = {
+                // Build a secure property protection interceptor to stop renpy.js from resetting arguments
+                let baselineArguments = ["/home/pyodide/main.py"];
+                let protectedModule = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["/home/pyodide/main.py"], 
                     print: console.log,
                     printErr: console.error,
+                };
+                
+                // Create a reactive proxy wrapper that intercepts any external file-path overrides
+                window.Module = new Proxy(protectedModule, {
+                    get: function(target, prop) {
+                        if (prop === 'arguments') return baselineArguments;
+                        return target[prop];
+                    },
+                    set: function(target, prop, value) {
+                        if (prop === 'arguments') {
+                            console.log("Blocked a destructive path reset attempt from engine core: ", value);
+                            return true; // Completely reject the overwrite and pretend it succeeded
+                        }
+                        target[prop] = value;
+                        return true;
+                    }
+                });
+                
+                // Now define the rest of your system setup parameters securely onto the protected target
+                protectedModule.locateFile = function(path) {
+                    if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
+                    return path;
+                };
+                
+                protectedModule.preRun = [function() {
                     locateFile: function(path) {
                         if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
                         return path;
