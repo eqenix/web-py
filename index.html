@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>web-py</title>
+    <title>Universal Desktop Ren'Py Emulator</title>
     <script src="jszip.min.js"></script>
     <style>
         body { 
@@ -120,20 +120,18 @@
                 progressBar.style.width = "85%";
                 
                 const gameDataBlob = await gameZip.generateAsync({ type: "blob" });
-                
-                // Store the file blob globally in window memory context BEFORE renpy.js loads
                 window.renpyGameBlob = gameDataBlob;
 
                 loadingText.innerText = "Initializing Ren'Py engine...";
                 progressBar.style.width = "95%";
 
-                // Define engine mount settings before creating the script tag
                 window.windowHeight = window.innerHeight;
                 window.windowWidth = window.innerWidth;
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["./game"], 
+                    // FIX: Pass the virtual mounted path directly to the executable arguments
+                    arguments: ["/game.zip"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -141,8 +139,8 @@
                         return path;
                     },
                     getPreloadedPackage: function(remotePackageName, remotePackageSize) {
-                        // Directly intercept engine checks and return our in-memory unzipped game blob
-                        if (remotePackageName === "game.data" || remotePackageName === "game.zip" || remotePackageName.endsWith("game.data")) {
+                        // FIX: Explicitly intercept and return our unzipped data blob for the internal path tracker
+                        if (remotePackageName === "game.data" || remotePackageName === "game.zip" || remotePackageName.endsWith("game.data") || remotePackageName.endsWith("game.zip") || remotePackageName === "/game.zip") {
                             return window.renpyGameBlob;
                         }
                         return null;
@@ -153,7 +151,6 @@
                 };
                 window.Module.filePackagePrefixURL = window.location.origin + "/";
 
-                // DYNAMIC DELAYED INJECTION: Wake up renpy.js only now that memory arrays are ready
                 setTimeout(() => {
                     progressBar.style.width = "100%";
                     interactiveUi.style.display = 'none';
