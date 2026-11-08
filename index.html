@@ -53,7 +53,6 @@
     </div>
     
     <div id="game-container"><canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas></div>
-
     <script>
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
@@ -82,31 +81,28 @@
 
             dropZone.style.display = 'none';
             loadingContainer.style.display = 'block';
-            loadingText.innerText = "Scanning desktop zip directories...";
+            loadingText.innerText = "Scanning zip files...";
             progressBar.style.width = "5%";
 
             try {
                 const zip = await JSZip.loadAsync(file);
                 
-                // Track the nested prefix directory (if it exists)
                 let prefix = "";
                 const sampleKey = Object.keys(zip.files).find(k => k.includes("/game/options.rpyc") || k.endsWith("game/options.rpyc"));
                 if (sampleKey) {
                     prefix = sampleKey.substring(0, sampleKey.indexOf("game/"));
                 }
 
-                loadingText.innerText = "Extracting complete application structure...";
+                loadingText.innerText = "Extracting app assets...";
                 progressBar.style.width = "20%";
 
                 window.virtualFileSystemMap = {};
-                // ARCHITECTURE FIX: Extract EVERYTHING in the archive, not just the 'game' folder
                 const targetEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir);
                 const totalFiles = targetEntries.length;
                 
                 let processedFiles = 0;
 
                 for (const [filename, zipEntry] of targetEntries) {
-                    // Strip the base folder prefix so everything sits at root layer level
                     const cleanPath = filename.replace(prefix, "");
                     const fileArrayBuffer = await zipEntry.async("uint8array");
                     window.virtualFileSystemMap[cleanPath] = fileArrayBuffer;
@@ -116,7 +112,7 @@
                     progressBar.style.width = progressPercent + "%";
                 }
 
-                loadingText.innerText = "Mounting internal application structures...";
+                loadingText.innerText = "Mounting virtual memory hard drive...";
                 progressBar.style.width = "90%";
 
                 window.windowHeight = window.innerHeight;
@@ -124,8 +120,7 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    // FIX 1: Explicitly force the runtime execution straight to the pyodide script path
-                    arguments: ["/home/pyodide/main.py"], 
+                    arguments: ["//main.py"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -146,22 +141,23 @@
                                 } catch (e) {}
                             }
                         }
-                
+
                         try {
-                            // FIX 2: Re-verify standard execution pathways exist before the unpacker wakes up
                             try { Module.FS.mkdir('/home'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
-                
-                            // 22-byte sequence that builds a technically perfect, empty zip binary format
+
+                            // Build a valid empty zip format chunk to verify native headers
                             const validEmptyZipBytes = new Uint8Array([
                                 0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 
                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00             
                             ]);
                             Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
-                
-                            // Write every single file from the desktop package into /home/pyodide/
+
+                            // Unpack and loop your desktop file data arrays straight to the workspace root directory context
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
+                                Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
+                                
                                 const targetPath = '/home/pyodide/' + vPath;
                                 createVfsPath('/home/pyodide', vPath);
                                 Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
@@ -173,19 +169,10 @@
                     }],
                     postRun: [function() {
                         console.log("WebAssembly runtime launched successfully.");
-                        // FIX 3: Force switch internal working directories right at execution boot time
-                        try {
-                            Module.FS.chdir('/home/pyodide');
-                        } catch(e) {}
                     }]
                 };
                 window.Module.filePackagePrefixURL = window.location.origin + "/";
-                
-                // FIX 4: Explicitly seed standard environment parameters for python path configurations
-                window.Module.ENV = {
-                    "HOME": "/home/pyodide",
-                    "PYTHONPATH": "/home/pyodide"
-                };
+
                 setTimeout(() => {
                     progressBar.style.width = "100%";
                     interactiveUi.style.display = 'none';
