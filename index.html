@@ -74,7 +74,8 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList;
+            // FIX: Safely extract the target file out of the multi-file list wrapper array context
+            const file = fileList[0];
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -147,16 +148,13 @@
                         }
 
                         try {
-                            // 1. Create the structural environment pathways for Pyodide
                             try { Module.FS.mkdir('/home'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide/game'); } catch(e){}
 
-                            // 2. Inject an empty dummy 'game.zip' to satisfy the hardcoded check
-                            const emptyZipBytes = new Uint8Array([80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+                            const emptyZipBytes = new Uint8Array();
                             Module.FS.createDataFile('/', 'game.zip', emptyZipBytes, true, true, true);
 
-                            // 3. Mount the extracted game assets to the runtime execution folder
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
                                 const targetPath = '/home/pyodide/' + vPath;
                                 createVfsPath('/home/pyodide', vPath);
