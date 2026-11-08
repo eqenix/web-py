@@ -74,7 +74,7 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList;
+            const file = fileList[0];
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -97,41 +97,37 @@
                     throw new Error("Could not find a valid Ren'Py 'game' directory structure inside this ZIP file.");
                 }
 
-                loadingText.innerText = "Extracting desktop scripts & game structures...";
+                loadingText.innerText = "Extracting game file arrays...";
                 progressBar.style.width = "20%";
 
-                const gameZip = new JSZip();
-                const allEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir && filename.startsWith(prefix + "game/"));
-                const totalFiles = allEntries.length;
+                // Map files into a flat memory index dictionary
+                window.virtualFileSystemMap = {};
+                const拦截Entries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir && filename.startsWith(prefix + "game/"));
+                const totalFiles = 拦截Entries.length;
                 
                 let processedFiles = 0;
 
-                for (const [filename, zipEntry] of allEntries) {
-                    const relativePath = filename.replace(prefix, "");
-                    const fileBlob = await zipEntry.async("blob");
-                    gameZip.file(relativePath, fileBlob);
+                for (const [filename, zipEntry] of 拦截Entries) {
+                    // Normalize the destination path inside the engine (e.g., "game/script.rpyc")
+                    const cleanPath = filename.replace(prefix, "");
+                    const fileArrayBuffer = await zipEntry.async("uint8array");
+                    
+                    window.virtualFileSystemMap[cleanPath] = fileArrayBuffer;
                     
                     processedFiles++;
-                    let progressPercent = 20 + Math.floor((processedFiles / totalFiles) * 60);
+                    let progressPercent = 20 + Math.floor((processedFiles / totalFiles) * 65);
                     progressBar.style.width = `${progressPercent}%`;
                 }
 
-                loadingText.innerText = "Packing assets for WebAssembly filesystem...";
-                progressBar.style.width = "85%";
-                
-                // Generate a Uint8Array instead of a Blob to feed directly into WebAssembly FS
-                const gameDataArrayBuffer = await gameZip.generateAsync({ type: "arraybuffer" });
-                window.renpyUint8Array = new Uint8Array(gameDataArrayBuffer);
-
-                loadingText.innerText = "Initializing Ren'Py engine...";
-                progressBar.style.width = "95%";
+                loadingText.innerText = "Mounting internal application structures...";
+                progressBar.style.width = "90%";
 
                 window.windowHeight = window.innerHeight;
                 window.windowWidth = window.innerWidth;
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["/game.zip"], 
+                    arguments: ["/game"], // Points directly to the virtualized folder layout
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -139,12 +135,32 @@
                         return path;
                     },
                     preRun: [function() {
-                        // CRITICAL FIX: Explicitly mount the data directly into Emscripten's virtual root file path BEFORE Python calls main.py
+                        console.log("Initializing dynamic virtual folder injection layout...");
+                        
+                        // Recursive directory builder utility function for Emscripten's FS
+                        function createVfsPath(path) {
+                            let parts = path.split('/');
+                            let current = '';
+                            for (let i = 0; i < parts.length - 1; i++) {
+                                if (!parts[i]) continue;
+                                current += '/' + parts[i];
+                                try {
+                                    Module.FS.mkdir(current);
+                                } catch (e) {
+                                    // Path already exists, suppress error logs safely
+                                }
+                            }
+                        }
+
+                        // Write every single extracted game file directly into the sandbox virtual space
                         try {
-                            Module.FS.createDataFile('/', 'game.zip', window.renpyUint8Array, true, true, true);
-                            console.log("Successfully virtualized game.zip into root file system directory layer.");
-                        } catch(e) {
-                            console.error("Virtual filesystem mounting failure: ", e);
+                            for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
+                                createVfsPath(vPath);
+                                Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
+                            }
+                            console.log("Direct virtual filesystem injection loop finished successfully!");
+                        } catch(vfsErr) {
+                            console.error("Critical VFS injection exception: ", vfsErr);
                         }
                     }],
                     postRun: [function() {
