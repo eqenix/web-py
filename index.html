@@ -123,69 +123,69 @@
                 window.windowWidth = window.innerWidth;
                 
                 window.Module = {
-    canvas: document.getElementById('canvas'),
-    // FIX 1: Explicitly force the runtime execution straight to the pyodide script path
-    arguments: ["/home/pyodide/main.py"], 
-    print: console.log,
-    printErr: console.error,
-    locateFile: function(path) {
-        if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
-        return path;
-    },
-    preRun: [function() {
-        console.log("Initializing dynamic virtual folder injection layout...");
-        
-        function createVfsPath(baseDir, path) {
-            let parts = path.split('/');
-            let current = baseDir;
-            for (let i = 0; i < parts.length - 1; i++) {
-                if (!parts[i]) continue;
-                current += '/' + parts[i];
-                try {
-                    Module.FS.mkdir(current);
-                } catch (e) {}
-            }
-        }
-
-        try {
-            // FIX 2: Re-verify standard execution pathways exist before the unpacker wakes up
-            try { Module.FS.mkdir('/home'); } catch(e){}
-            try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
-
-            // 22-byte sequence that builds a technically perfect, empty zip binary format
-            const validEmptyZipBytes = new Uint8Array([
-                0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00             
-            ]);
-            Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
-
-            // Write every single file from the desktop package into /home/pyodide/
-            for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
-                const targetPath = '/home/pyodide/' + vPath;
-                createVfsPath('/home/pyodide', vPath);
-                Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
-            }
-            console.log("Direct virtual filesystem injection loop finished successfully!");
-        } catch(vfsErr) {
-            console.error("Critical VFS injection exception: ", vfsErr);
-        }
-    }],
-    postRun: [function() {
-        console.log("WebAssembly runtime launched successfully.");
-        // FIX 3: Force switch internal working directories right at execution boot time
-        try {
-            Module.FS.chdir('/home/pyodide');
-        } catch(e) {}
-    }]
-};
-window.Module.filePackagePrefixURL = window.location.origin + "/";
-
-// FIX 4: Explicitly seed standard environment parameters for python path configurations
-window.Module.ENV = {
-    "HOME": "/home/pyodide",
-    "PYTHONPATH": "/home/pyodide"
-};
+                    canvas: document.getElementById('canvas'),
+                    // FIX 1: Explicitly force the runtime execution straight to the pyodide script path
+                    arguments: ["/home/pyodide/main.py"], 
+                    print: console.log,
+                    printErr: console.error,
+                    locateFile: function(path) {
+                        if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
+                        return path;
+                    },
+                    preRun: [function() {
+                        console.log("Initializing dynamic virtual folder injection layout...");
+                        
+                        function createVfsPath(baseDir, path) {
+                            let parts = path.split('/');
+                            let current = baseDir;
+                            for (let i = 0; i < parts.length - 1; i++) {
+                                if (!parts[i]) continue;
+                                current += '/' + parts[i];
+                                try {
+                                    Module.FS.mkdir(current);
+                                } catch (e) {}
+                            }
+                        }
+                
+                        try {
+                            // FIX 2: Re-verify standard execution pathways exist before the unpacker wakes up
+                            try { Module.FS.mkdir('/home'); } catch(e){}
+                            try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
+                
+                            // 22-byte sequence that builds a technically perfect, empty zip binary format
+                            const validEmptyZipBytes = new Uint8Array([
+                                0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00             
+                            ]);
+                            Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
+                
+                            // Write every single file from the desktop package into /home/pyodide/
+                            for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
+                                const targetPath = '/home/pyodide/' + vPath;
+                                createVfsPath('/home/pyodide', vPath);
+                                Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
+                            }
+                            console.log("Direct virtual filesystem injection loop finished successfully!");
+                        } catch(vfsErr) {
+                            console.error("Critical VFS injection exception: ", vfsErr);
+                        }
+                    }],
+                    postRun: [function() {
+                        console.log("WebAssembly runtime launched successfully.");
+                        // FIX 3: Force switch internal working directories right at execution boot time
+                        try {
+                            Module.FS.chdir('/home/pyodide');
+                        } catch(e) {}
+                    }]
+                };
+                window.Module.filePackagePrefixURL = window.location.origin + "/";
+                
+                // FIX 4: Explicitly seed standard environment parameters for python path configurations
+                window.Module.ENV = {
+                    "HOME": "/home/pyodide",
+                    "PYTHONPATH": "/home/pyodide"
+                };
                 setTimeout(() => {
                     progressBar.style.width = "100%";
                     interactiveUi.style.display = 'none';
