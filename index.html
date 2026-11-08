@@ -74,7 +74,6 @@
         });
 
         async function handleDesktopZip(fileList) {
-            // FIX: Safely extract the target file out of the multi-file list wrapper array context
             const file = fileList[0];
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
@@ -114,7 +113,7 @@
                     
                     processedFiles++;
                     let progressPercent = 20 + Math.floor((processedFiles / totalFiles) * 65);
-                    progressBar.style.width = `${progressPercent}%`;
+                    progressBar.style.width = progressPercent + "%";
                 }
 
                 loadingText.innerText = "Mounting internal application structures...";
@@ -152,8 +151,15 @@
                             try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide/game'); } catch(e){}
 
-                            const emptyZipBytes = new Uint8Array();
-                            Module.FS.createDataFile('/', 'game.zip', emptyZipBytes, true, true, true);
+                            const validEmptyZipBytes = new Uint8Array([
+                                0x50, 0x4B, 0x05, 0x06, 
+                                0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00, 0x00, 0x00, 
+                                0x00, 0x00             
+                            ]);
+                            Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
 
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
                                 const targetPath = '/home/pyodide/' + vPath;
@@ -186,6 +192,3 @@
                 location.reload();
             }
         }
-    </script>
-</body>
-</html>
