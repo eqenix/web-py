@@ -100,15 +100,14 @@
                 loadingText.innerText = "Extracting game file arrays...";
                 progressBar.style.width = "20%";
 
-                // Map files into a flat memory index dictionary
+                // FIXED: Changed variable string definition to safe standard syntax
                 window.virtualFileSystemMap = {};
-                const拦截Entries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir && filename.startsWith(prefix + "game/"));
-                const totalFiles = 拦截Entries.length;
+                const targetEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir && filename.startsWith(prefix + "game/"));
+                const totalFiles = targetEntries.length;
                 
                 let processedFiles = 0;
 
-                for (const [filename, zipEntry] of 拦截Entries) {
-                    // Normalize the destination path inside the engine (e.g., "game/script.rpyc")
+                for (const [filename, zipEntry] of targetEntries) {
                     const cleanPath = filename.replace(prefix, "");
                     const fileArrayBuffer = await zipEntry.async("uint8array");
                     
@@ -127,7 +126,7 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["/game"], // Points directly to the virtualized folder layout
+                    arguments: ["/game"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -137,7 +136,6 @@
                     preRun: [function() {
                         console.log("Initializing dynamic virtual folder injection layout...");
                         
-                        // Recursive directory builder utility function for Emscripten's FS
                         function createVfsPath(path) {
                             let parts = path.split('/');
                             let current = '';
@@ -147,12 +145,11 @@
                                 try {
                                     Module.FS.mkdir(current);
                                 } catch (e) {
-                                    // Path already exists, suppress error logs safely
+                                    // Path segment existing hook bypass
                                 }
                             }
                         }
 
-                        // Write every single extracted game file directly into the sandbox virtual space
                         try {
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
                                 createVfsPath(vPath);
