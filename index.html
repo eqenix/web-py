@@ -81,7 +81,7 @@
 
             dropZone.style.display = 'none';
             loadingContainer.style.display = 'block';
-            loadingText.innerText = "Scanning zip files...";
+            loadingText.innerText = "Parsing archive headers...";
             progressBar.style.width = "5%";
 
             try {
@@ -112,7 +112,7 @@
                     progressBar.style.width = progressPercent + "%";
                 }
 
-                loadingText.innerText = "Mounting virtual memory hard drive...";
+                loadingText.innerText = "Mounting isolated execution layers...";
                 progressBar.style.width = "90%";
 
                 window.windowHeight = window.innerHeight;
@@ -120,7 +120,7 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["//main.py"], 
+                    arguments: ["/home/pyodide/main.py"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -129,20 +129,9 @@
                     },
                     preRun: [function() {
                         console.log("Initializing dynamic virtual folder injection layout...");
-                        
-                        function createVfsPath(baseDir, path) {
-                            let parts = path.split('/');
-                            let current = baseDir;
-                            for (let i = 0; i < parts.length - 1; i++) {
-                                if (!parts[i]) continue;
-                                current += '/' + parts[i];
-                                try {
-                                    Module.FS.mkdir(current);
-                                } catch (e) {}
-                            }
-                        }
 
                         try {
+                            // Enforce home architecture paths natively
                             try { Module.FS.mkdir('/home'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
 
@@ -154,14 +143,28 @@
                             ]);
                             Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
 
-                            // Unpack and loop your desktop file data arrays straight to the workspace root directory context
+                            // Write extracted game files directly into the virtual storage sandbox space
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
-                                Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
-                                
                                 const targetPath = '/home/pyodide/' + vPath;
-                                createVfsPath('/home/pyodide', vPath);
+                                
+                                // Direct folder mapping safety handler
+                                let parts = vPath.split('/');
+                                let current = '/home/pyodide';
+                                for (let i = 0; i < parts.length - 1; i++) {
+                                    if (!parts[i]) continue;
+                                    current += '/' + parts[i];
+                                    try { Module.FS.mkdir(current); } catch(e){}
+                                }
+                                
                                 Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
                             }
+
+                            // Mirror the core entrypoint files onto the fallback layer context 
+                            // to satisfy the destructive unpacking checks inside renpy.js
+                            if (window.virtualFileSystemMap['main.py']) {
+                                try { Module.FS.createDataFile('/', 'main.py', window.virtualFileSystemMap['main.py'], true, true, true); } catch(e){}
+                            }
+
                             console.log("Direct virtual filesystem injection loop finished successfully!");
                         } catch(vfsErr) {
                             console.error("Critical VFS injection exception: ", vfsErr);
@@ -169,9 +172,15 @@
                     }],
                     postRun: [function() {
                         console.log("WebAssembly runtime launched successfully.");
+                        try { Module.FS.chdir('/home/pyodide'); } catch(e){}
                     }]
                 };
                 window.Module.filePackagePrefixURL = window.location.origin + "/";
+
+                window.Module.ENV = {
+                    "HOME": "/home/pyodide",
+                    "PYTHONPATH": "/home/pyodide"
+                };
 
                 setTimeout(() => {
                     progressBar.style.width = "100%";
