@@ -74,7 +74,7 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList[0];
+            const file = fileList;
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -119,8 +119,9 @@
                 loadingText.innerText = "Packing assets for WebAssembly filesystem...";
                 progressBar.style.width = "85%";
                 
-                const gameDataBlob = await gameZip.generateAsync({ type: "blob" });
-                window.renpyGameBlob = gameDataBlob;
+                // Generate a Uint8Array instead of a Blob to feed directly into WebAssembly FS
+                const gameDataArrayBuffer = await gameZip.generateAsync({ type: "arraybuffer" });
+                window.renpyUint8Array = new Uint8Array(gameDataArrayBuffer);
 
                 loadingText.innerText = "Initializing Ren'Py engine...";
                 progressBar.style.width = "95%";
@@ -130,7 +131,6 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    // FIX: Pass the virtual mounted path directly to the executable arguments
                     arguments: ["/game.zip"], 
                     print: console.log,
                     printErr: console.error,
@@ -138,13 +138,15 @@
                         if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
                         return path;
                     },
-                    getPreloadedPackage: function(remotePackageName, remotePackageSize) {
-                        // FIX: Explicitly intercept and return our unzipped data blob for the internal path tracker
-                        if (remotePackageName === "game.data" || remotePackageName === "game.zip" || remotePackageName.endsWith("game.data") || remotePackageName.endsWith("game.zip") || remotePackageName === "/game.zip") {
-                            return window.renpyGameBlob;
+                    preRun: [function() {
+                        // CRITICAL FIX: Explicitly mount the data directly into Emscripten's virtual root file path BEFORE Python calls main.py
+                        try {
+                            Module.FS.createDataFile('/', 'game.zip', window.renpyUint8Array, true, true, true);
+                            console.log("Successfully virtualized game.zip into root file system directory layer.");
+                        } catch(e) {
+                            console.error("Virtual filesystem mounting failure: ", e);
                         }
-                        return null;
-                    },
+                    }],
                     postRun: [function() {
                         console.log("WebAssembly runtime launched successfully.");
                     }]
