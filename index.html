@@ -74,7 +74,7 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList[0];
+            const file = fileList;
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -109,7 +109,6 @@
                 for (const [filename, zipEntry] of targetEntries) {
                     const cleanPath = filename.replace(prefix, "");
                     const fileArrayBuffer = await zipEntry.async("uint8array");
-                    
                     window.virtualFileSystemMap[cleanPath] = fileArrayBuffer;
                     
                     processedFiles++;
@@ -143,20 +142,22 @@
                                 current += '/' + parts[i];
                                 try {
                                     Module.FS.mkdir(current);
-                                } catch (e) {
-                                    // Directory layer bypass catch
-                                }
+                                } catch (e) {}
                             }
                         }
 
                         try {
-                            // FIX: Force create the standard execution root folders inside the engine sandbox
+                            // 1. Create the structural environment pathways for Pyodide
                             try { Module.FS.mkdir('/home'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
                             try { Module.FS.mkdir('/home/pyodide/game'); } catch(e){}
 
+                            // 2. Inject an empty dummy 'game.zip' to satisfy the hardcoded check
+                            const emptyZipBytes = new Uint8Array([80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+                            Module.FS.createDataFile('/', 'game.zip', emptyZipBytes, true, true, true);
+
+                            // 3. Mount the extracted game assets to the runtime execution folder
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
-                                // Maps directly to '/home/pyodide/game/...'
                                 const targetPath = '/home/pyodide/' + vPath;
                                 createVfsPath('/home/pyodide', vPath);
                                 Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
