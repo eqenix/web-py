@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Desktop Ren'Py Emulator</title>
+    <title>web-py</title>
     <script src="jszip.min.js"></script>
     <style>
         body { 
@@ -133,7 +133,7 @@
                 
                 window.Module = {
                     canvas: document.getElementById('canvas'),
-                    arguments: ["/web-py"], 
+                    arguments: ["./game"], 
                     print: console.log,
                     printErr: console.error,
                     locateFile: function(path) {
@@ -142,7 +142,7 @@
                     },
                     getPreloadedPackage: function(remotePackageName, remotePackageSize) {
                         // Directly intercept engine checks and return our in-memory unzipped game blob
-                        if (remotePackageName === "game.data" || remotePackageName.endsWith("game.data")) {
+                        if (remotePackageName === "game.data" || remotePackageName === "game.zip" || remotePackageName.endsWith("game.data")) {
                             return window.renpyGameBlob;
                         }
                         return null;
