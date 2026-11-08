@@ -53,7 +53,7 @@
     </div>
     
     <div id="game-container"><canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas></div>
-    <script>
+        <script>
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
         const interactiveUi = document.getElementById('interactive-ui');
@@ -73,7 +73,7 @@
         });
 
         async function handleDesktopZip(fileList) {
-            const file = fileList[0];
+            const file = fileList;
             if (!file || !file.name.endsWith('.zip')) {
                 alert("Please drop a valid desktop .zip archive.");
                 return;
@@ -81,7 +81,7 @@
 
             dropZone.style.display = 'none';
             loadingContainer.style.display = 'block';
-            loadingText.innerText = "Parsing archive headers...";
+            loadingText.innerText = "Parsing zip headers...";
             progressBar.style.width = "5%";
 
             try {
@@ -93,10 +93,11 @@
                     prefix = sampleKey.substring(0, sampleKey.indexOf("game/"));
                 }
 
-                loadingText.innerText = "Extracting app assets...";
+                loadingText.innerText = "Extracting desktop files...";
                 progressBar.style.width = "20%";
 
                 window.virtualFileSystemMap = {};
+                // Extract every loose file from the ZIP package
                 const targetEntries = Object.entries(zip.files).filter(([filename, entry]) => !entry.dir);
                 const totalFiles = targetEntries.length;
                 
@@ -112,56 +113,38 @@
                     progressBar.style.width = progressPercent + "%";
                 }
 
-                loadingText.innerText = "Mounting isolated execution layers...";
+                loadingText.innerText = "Mounting virtual filesystem root...";
                 progressBar.style.width = "90%";
 
                 window.windowHeight = window.innerHeight;
                 window.windowWidth = window.innerWidth;
                 
-                // Build a secure property protection interceptor to stop renpy.js from resetting arguments
-                let baselineArguments = ["/home/pyodide/main.py"];
-                let protectedModule = {
+                window.Module = {
                     canvas: document.getElementById('canvas'),
                     print: console.log,
                     printErr: console.error,
-                };
-                
-                // Create a reactive proxy wrapper that intercepts any external file-path overrides
-                window.Module = new Proxy(protectedModule, {
-                    get: function(target, prop) {
-                        if (prop === 'arguments') return baselineArguments;
-                        return target[prop];
-                    },
-                    set: function(target, prop, value) {
-                        if (prop === 'arguments') {
-                            console.log("Blocked a destructive path reset attempt from engine core: ", value);
-                            return true; // Completely reject the overwrite and pretend it succeeded
-                        }
-                        target[prop] = value;
-                        return true;
-                    }
-                });
-                
-                // Now define the rest of your system setup parameters securely onto the protected target
-                protectedModule.locateFile = function(path) {
-                    if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
-                    return path;
-                };
-                
-                protectedModule.preRun = [function() {
                     locateFile: function(path) {
                         if (path === "renpy.wasm") return window.location.origin + "/renpy.wasm";
                         return path;
                     },
                     preRun: [function() {
-                        console.log("Initializing dynamic virtual folder injection layout...");
+                        console.log("Injecting assets directly into root layer to fix //main.py check...");
+                        
+                        // Helper function to build directories directly from the root /
+                        function createRootPath(path) {
+                            let parts = path.split('/');
+                            let current = '';
+                            for (let i = 0; i < parts.length - 1; i++) {
+                                if (!parts[i]) continue;
+                                current += '/' + parts[i];
+                                try {
+                                    Module.FS.mkdir(current);
+                                } catch (e) {}
+                            }
+                        }
 
                         try {
-                            // Enforce home architecture paths natively
-                            try { Module.FS.mkdir('/home'); } catch(e){}
-                            try { Module.FS.mkdir('/home/pyodide'); } catch(e){}
-
-                            // Build a valid empty zip format chunk to verify native headers
+                            // 1. Fake the required game.zip format binary sequence to pass verification checks
                             const validEmptyZipBytes = new Uint8Array([
                                 0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 
                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -169,44 +152,26 @@
                             ]);
                             Module.FS.createDataFile('/', 'game.zip', validEmptyZipBytes, true, true, true);
 
-                            // Write extracted game files directly into the virtual storage sandbox space
+                            // 2. Write EVERY file directly to the root environment folder (e.g., /main.py, /game/script.rpyc)
                             for (const [vPath, u8Array] of Object.entries(window.virtualFileSystemMap)) {
-                                const targetPath = '/home/pyodide/' + vPath;
-                                
-                                // Direct folder mapping safety handler
-                                let parts = vPath.split('/');
-                                let current = '/home/pyodide';
-                                for (let i = 0; i < parts.length - 1; i++) {
-                                    if (!parts[i]) continue;
-                                    current += '/' + parts[i];
-                                    try { Module.FS.mkdir(current); } catch(e){}
+                                createRootPath(vPath);
+                                try {
+                                    // This places main.py exactly at /main.py so that '//main.py' successfully opens
+                                    Module.FS.createDataFile('/', vPath, u8Array, true, true, true);
+                                } catch(e) {
+                                    console.warn("Skipping file write conflict: ", vPath);
                                 }
-                                
-                                Module.FS.createDataFile('/', targetPath, u8Array, true, true, true);
                             }
-
-                            // Mirror the core entrypoint files onto the fallback layer context 
-                            // to satisfy the destructive unpacking checks inside renpy.js
-                            if (window.virtualFileSystemMap['main.py']) {
-                                try { Module.FS.createDataFile('/', 'main.py', window.virtualFileSystemMap['main.py'], true, true, true); } catch(e){}
-                            }
-
-                            console.log("Direct virtual filesystem injection loop finished successfully!");
+                            console.log("Root filesystem virtualization finished!");
                         } catch(vfsErr) {
-                            console.error("Critical VFS injection exception: ", vfsErr);
+                            console.error("VFS injection failed: ", vfsErr);
                         }
                     }],
                     postRun: [function() {
-                        console.log("WebAssembly runtime launched successfully.");
-                        try { Module.FS.chdir('/home/pyodide'); } catch(e){}
+                        console.log("WebAssembly core loaded.");
                     }]
                 };
                 window.Module.filePackagePrefixURL = window.location.origin + "/";
-
-                window.Module.ENV = {
-                    "HOME": "/home/pyodide",
-                    "PYTHONPATH": "/home/pyodide"
-                };
 
                 setTimeout(() => {
                     progressBar.style.width = "100%";
@@ -220,7 +185,6 @@
 
             } catch (err) {
                 alert("Error during virtualization: " + err.message);
-                console.error("Tracking virtualization crash context: ", err);
             }
         }
     </script>
